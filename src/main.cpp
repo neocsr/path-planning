@@ -194,7 +194,22 @@ int main() {
     map_waypoints_dy.push_back(d_y);
   }
 
-  h.onMessage([&map_waypoints_x, &map_waypoints_y, &map_waypoints_s, &map_waypoints_dx, &map_waypoints_dy](
+  // Extra variables
+
+  // Start in lane 1 (three lanes, starting from the right: 0, 1 and 2)
+  int lane = 1;
+
+  // Reference velocity to target in mph
+  double ref_vel = 49.5;
+
+  h.onMessage(
+      [&ref_vel,
+       &map_waypoints_x,
+       &map_waypoints_y,
+       &map_waypoints_s,
+       &map_waypoints_dx,
+       &map_waypoints_dy,
+       &lane](
           uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
         // "42" at the start of the message means there's a websocket message event.
         // The 4 signifies a websocket message
@@ -235,22 +250,137 @@ int main() {
 
               json msgJson;
 
+              // Define actual points for the planner
               vector<double> next_x_vals;
               vector<double> next_y_vals;
 
               // TODO: define a path made up of (x,y) points that the car will
               // visit sequentially every .02 seconds
 
-              // Keep the car in the lane
-              double dist_inc = 0.5;
+              int prev_size = previous_path_x.size();
 
-              for (int i = 0; i < 50; ++i) {
-                double next_s = car_s + (i + 1) * dist_inc;
-                double next_d = 4 + 2;
-                vector<double> xy = getXY(next_s, next_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+              // Create a list of widely spaced (x, y) waypoints evenly spaced
+              // at 30m.
+              // Later we will interpolate these waypoints with a spline
+              vector<double> pts_x;
+              vector<double> pts_y;
 
-                next_x_vals.push_back(xy[0]);
-                next_y_vals.push_back(xy[1]);
+              // Reference x, y, yaw states
+              // For the starting point we will use either the car position or
+              // the last points of the previous path
+              double ref_x = car_x;
+              double ref_y = car_y;
+              double ref_yaw = deg2rad(car_yaw);
+
+              // If the previous path is almost empty, use the car position
+              if (prev_size < 2) {
+                // Use two points that make the path tangent to the car
+                double prev_car_x = car_x - cos(car_yaw);
+                double prev_car_y = car_y - sin(car_yaw);
+
+                pts_x.push_back(prev_car_x);
+                pts_x.push_back(car_x);
+
+                pts_y.push_back(prev_car_y);
+                pts_y.push_back(car_y);
+
+              } else {
+                // Use the previous path end point as starting reference
+
+                // Redefine reference state as previous path end point
+                ref_x = previous_path_x[prev_size - 1];
+                ref_y = previous_path_y[prev_size - 1];
+
+                double ref_x_prev = previous_path_x[prev_size - 2];
+                double ref_y_prev = previous_path_y[prev_size - 2];
+                ref_yaw = atan2(ref_y - ref_y_prev, ref_x - ref_x_prev);
+
+                pts_x.push_back(ref_x_prev);
+                pts_x.push_back(ref_x);
+
+                pts_y.push_back(ref_y_prev);
+                pts_y.push_back(ref_y);
+              }
+
+              vector<double> next_wp0 = getXY(car_s + 30,
+                                              (2 + 4 * lane),
+                                              map_waypoints_s,
+                                              map_waypoints_x,
+                                              map_waypoints_y);
+              vector<double> next_wp1 = getXY(car_s + 60,
+                                              (2 + 4 * lane),
+                                              map_waypoints_s,
+                                              map_waypoints_x,
+                                              map_waypoints_y);
+              vector<double> next_wp2 = getXY(car_s + 90,
+                                              (2 + 4 * lane),
+                                              map_waypoints_s,
+                                              map_waypoints_x,
+                                              map_waypoints_y);
+
+              pts_x.push_back(next_wp0[0]);
+              pts_x.push_back(next_wp1[0]);
+              pts_x.push_back(next_wp2[0]);
+
+              pts_y.push_back(next_wp0[1]);
+              pts_y.push_back(next_wp1[1]);
+              pts_y.push_back(next_wp2[1]);
+
+
+              // Convert from global to local car coordinates
+              // Similar to the MPC project
+              for (int i = 0; i < pts_x.size(); ++i) {
+                // Translation
+                double shift_x = pts_x[i] - ref_x;
+                double shift_y = pts_y[i] - ref_y;
+
+                // Rotation
+                pts_x[i] = (shift_x * cos(0 - ref_yaw) - shift_y * sin(0 - ref_yaw));
+                pts_y[i] = (shift_x * sin(0 - ref_yaw) + shift_y * cos(0 - ref_yaw));
+              }
+
+
+              // Create a spline
+              tk::spline spl;
+
+              // Prepare points
+              spl.set_points(pts_x, pts_y);
+
+              for (int i = 0; i < previous_path_x.size(); ++i) {
+                next_x_vals.push_back(previous_path_x[i]);
+                next_y_vals.push_back(previous_path_y[i]);
+              }
+
+              // Calculate how to break up spline points so we can travel at
+              // our desired reference velocity
+              double target_x = 30.0;
+              double target_y = spl(target_x);
+              double target_dist = sqrt(target_x * target_x + target_y * target_y);
+
+              double x_add_on = 0;
+
+              // Fill the points spacing the pints from the spline
+              for (int i = 0; i < 50 - previous_path_x.size(); ++i) {
+
+                // Convert from mph to m/s
+                double N = target_dist/(0.02 * ref_vel / 2.24);
+                double x_point = x_add_on + target_x / N;
+                double y_point = spl(x_point);
+
+                x_add_on = x_point;
+
+                double x_ref = x_point;
+                double y_ref = y_point;
+
+                // Go back to global coordinates
+                x_point = x_ref * cos(ref_yaw) - y_ref * sin(ref_yaw);
+                y_point = x_ref * sin(ref_yaw) + y_ref * cos(ref_yaw);
+
+                x_point += ref_x;
+                y_point += ref_y;
+
+                next_x_vals.push_back(x_point);
+                next_y_vals.push_back(y_point);
               }
 
               msgJson["next_x"] = next_x_vals;
@@ -258,7 +388,7 @@ int main() {
 
               auto msg = "42[\"control\"," + msgJson.dump() + "]";
 
-              //this_thread::sleep_for(chrono::milliseconds(1000));
+              // this_thread::sleep_for(chrono::milliseconds(1000));
               ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
             }
           } else {
