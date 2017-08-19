@@ -196,7 +196,7 @@ int main() {
 
   // Extra variables
 
-  // Start in lane 1 (three lanes, starting from the right: 0, 1 and 2)
+  // Start in lane 1 (three lanes, starting from the left: 0, 1 and 2)
   int lane = 1;
 
   // Reference velocity to target in mph
@@ -284,6 +284,10 @@ int main() {
                   // Check other car position greater than mine in a gap of 30m
                   if ((check_car_s > car_s) && (check_car_s - car_s) < 30) {
                     too_close = true;
+
+                    if (lane > 0) {
+                      lane = 0;
+                    }
                   }
                 }
               }
