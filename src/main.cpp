@@ -200,7 +200,7 @@ int main() {
   int lane = 1;
 
   // Reference velocity to target in mph
-  double ref_vel = 49.5;
+  double ref_vel = 0;
 
   h.onMessage(
       [&ref_vel,
@@ -283,14 +283,17 @@ int main() {
 
                   // Check other car position greater than mine in a gap of 30m
                   if ((check_car_s > car_s) && (check_car_s - car_s) < 30) {
-
-                    // Reduce velocity in mph
-                    ref_vel = 29.5;
+                    too_close = true;
                   }
                 }
               }
 
-
+              if (too_close) {
+                // 0.224 is about 5m/s
+                ref_vel -= 0.224;
+              } else if (ref_vel < 49.5) {
+                ref_vel += 0.224;
+              }
 
               // Create a list of widely spaced (x, y) waypoints evenly spaced
               // at 30m.
