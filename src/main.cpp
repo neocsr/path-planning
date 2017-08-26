@@ -22,6 +22,15 @@ double deg2rad(double x) { return x * pi() / 180; }
 
 double rad2deg(double x) { return x * 180 / pi(); }
 
+// In mph
+const int MAX_VEL = 49.8;
+
+// In mph
+const double INC_VEL = 0.224;
+
+// In meters
+const int TOO_CLOSE_GAP = 30;
+
 // Checks if the SocketIO event has JSON data.
 // If there is data the JSON object in string format will be returned,
 // else the empty string "" will be returned.
@@ -282,21 +291,36 @@ int main() {
                   check_car_s += (double)prev_size * 0.02 * check_speed;
 
                   // Check other car position greater than mine in a gap of 30m
-                  if ((check_car_s > car_s) && (check_car_s - car_s) < 30) {
+                  if ((check_car_s > car_s) &&
+                      (check_car_s - car_s) < TOO_CLOSE_GAP) {
                     too_close = true;
 
-                    if (lane > 0) {
-                      lane = 0;
+                    switch (lane) {
+                      case 0:
+                        lane = 1;
+                        break;
+                      case 1:
+                        lane = 0; // Or 2
+                        break;
+                      case 2:
+                        lane = 1;
+                        break;
+                      default:
+                        break;
                     }
                   }
                 }
               }
 
+              // Rubric: The car does not exceed a total acceleration of
+              // 10 m/s^2 and a jerk of 10 m/s^3.
+              // A change in velocity of 0.224mph (1m/s) generates a total
+              // acceleration of 5 m/s^2
+              // 0.224 mph is about 0.1 m/s (1 meter/second = 2.24 mile/hour)
               if (too_close) {
-                // 0.224 is about 5m/s
-                ref_vel -= 0.224;
-              } else if (ref_vel < 49.5) {
-                ref_vel += 0.224;
+                ref_vel -= 0.5 * INC_VEL;
+              } else if (ref_vel < MAX_VEL) {
+                ref_vel += 2 * INC_VEL;
               }
 
               // Create a list of widely spaced (x, y) waypoints evenly spaced
