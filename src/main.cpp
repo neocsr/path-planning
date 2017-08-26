@@ -280,7 +280,9 @@ int main() {
 
                 // Other car is in my lane
                 float d = sensor_fusion[i][6];
-                if (d < (2 + 4 * lane + 2) && d > (2 + 4 * lane - 2)) {
+                bool in_same_lane = d < (2 + 4 * lane + 2) && d > (2 + 4 * lane - 2);
+
+                if (in_same_lane) {
                   double vx = sensor_fusion[i][3];
                   double vy = sensor_fusion[i][4];
                   double check_speed = sqrt(vx * vx + vy * vy);
@@ -294,30 +296,32 @@ int main() {
                   if ((check_car_s > car_s) &&
                       (check_car_s - car_s) < TOO_CLOSE_GAP) {
                     too_close = true;
-
-                    switch (lane) {
-                      case 0:
-                        lane = 1;
-                        break;
-                      case 1:
-                        lane = 0; // Or 2
-                        break;
-                      case 2:
-                        lane = 1;
-                        break;
-                      default:
-                        break;
-                    }
                   }
                 }
               }
 
-              // Rubric: The car does not exceed a total acceleration of
-              // 10 m/s^2 and a jerk of 10 m/s^3.
-              // A change in velocity of 0.224mph (1m/s) generates a total
-              // acceleration of 5 m/s^2
-              // 0.224 mph is about 0.1 m/s (1 meter/second = 2.24 mile/hour)
               if (too_close) {
+
+                // State Machine
+                switch (lane) {
+                  case 0:
+                    lane = 1;
+                    break;
+                  case 1:
+                    lane = 0; // Or 2
+                    break;
+                  case 2:
+                    lane = 1;
+                    break;
+                  default:
+                    break;
+                }
+
+                // Rubric: The car does not exceed a total acceleration of
+                // 10 m/s^2 and a jerk of 10 m/s^3.
+                // A change in velocity of 0.224mph (1m/s) generates a total
+                // acceleration of 5 m/s^2
+                // 0.224 mph is about 0.1 m/s (1 meter/second = 2.24 mile/hour)
                 ref_vel -= 0.5 * INC_VEL;
               } else if (ref_vel < MAX_VEL) {
                 ref_vel += 2 * INC_VEL;
