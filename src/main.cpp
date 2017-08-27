@@ -280,6 +280,7 @@ int main() {
               bool too_close = false;
               bool too_close_left = false;
               bool too_close_right = false;
+              bool change_lane = false;
 
               // Find reference velocity to use
               for (int i = 0; i < sensor_fusion.size(); ++i) {
@@ -302,37 +303,64 @@ int main() {
                 // Speed helps to predict where the car is going to be
                 // Using previous points we can project s value in future
                 check_car_s += (double)prev_size * 0.02 * check_speed;
-                cout << "  = other car " << i << ": " << check_car_s << "d: " << d << endl;
+                cout << "  = other car " << setw(2) << i
+                     << "   s: " << fixed << setw(7) << setprecision(2) << check_car_s
+                     << "   d: " << fixed << setw(5) << setprecision(2) << d
+                     << "   speed: " << fixed << setw(5) << setprecision(2) << check_speed << endl;
+
+                double gap = abs(check_car_s - car_s);
 
                 // Other car is in my lane
                 if (in_same_lane) {
-                  // Check other car position greater than mine in a gap of 30m
-                  if ((check_car_s > car_s) &&
-                      (check_car_s - car_s) < TOO_CLOSE_GAP) {
-                    too_close = true;
+
+                  // And it is ahead of us
+                  if (check_car_s > car_s) {
+                    // Only change lanes when we are not too close to the car
+                    // in front
+                    if (0.3 * TOO_CLOSE_GAP < gap && gap < 1.5 * TOO_CLOSE_GAP) {
+                      change_lane = true;
+                    }
+
+                    // When we are within 30m of the car in front
+                    if (gap < TOO_CLOSE_GAP) {
+                      too_close = true;
+                    }
                   }
                 }
 
                 if (in_left_lane) {
-                  if (abs(check_car_s - car_s) < 0.25 * TOO_CLOSE_GAP) {
+                  if ((check_car_s > car_s) &&
+                      gap < 1.1 * TOO_CLOSE_GAP) {
+                    too_close_left = true;
+                  }
+
+                  if (gap < 0.2 * TOO_CLOSE_GAP) {
                     too_close_left = true;
                   }
                 }
 
                 if (in_right_lane) {
-                  if (abs(check_car_s - car_s) < 0.25 * TOO_CLOSE_GAP) {
+                  if ((check_car_s > car_s) &&
+                      gap < 1.1 * TOO_CLOSE_GAP) {
+                    too_close_right = true;
+                  }
+
+                  if (gap < 0.2 * TOO_CLOSE_GAP) {
                     too_close_right = true;
                   }
                 }
               }
 
               // Debugging info
-              cout << "  = car:          " << car_s << "d: " << car_d << endl;
-              cout << "    = too close:       " << too_close << endl;
+              cout << "  autonomous car"
+                   << "   s: " << fixed << setw(7) << setprecision(2) << car_s
+                   << "   d: " << fixed << setw(5) << setprecision(2) << car_d
+                   << "   speed: " << fixed << setw(5) << setprecision(2) << car_speed << endl;
+              cout << "    = too close front: " << too_close << endl;
               cout << "    = too close left:  " << too_close_left << endl;
               cout << "    = too close right: " << too_close_right << endl;
 
-              if (too_close) {
+              if (change_lane) {
 
                 // State Machine
                 switch (lane) {
@@ -356,7 +384,9 @@ int main() {
                   default:
                     break;
                 }
+              }
 
+              if (too_close) {
                 // Rubric: The car does not exceed a total acceleration of
                 // 10 m/s^2 and a jerk of 10 m/s^3.
                 // A change in velocity of 0.224mph (1m/s) generates a total
