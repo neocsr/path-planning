@@ -23,13 +23,13 @@ double deg2rad(double x) { return x * pi() / 180; }
 double rad2deg(double x) { return x * 180 / pi(); }
 
 // In mph
-const int MAX_VEL = 49.8;
+const double MAX_VEL = 49.5;
 
 // In mph
 const double INC_VEL = 0.224;
 
 // In meters
-const int TOO_CLOSE_GAP = 30;
+const double TOO_CLOSE_GAP = 30.0;
 
 // Checks if the SocketIO event has JSON data.
 // If there is data the JSON object in string format will be returned,
@@ -257,6 +257,10 @@ int main() {
               // side of the road.
               auto sensor_fusion = j[1]["sensor_fusion"];
 
+              // Debugging info
+              cout << "= cars detected: " << sensor_fusion.size() << endl;
+              cout << "= previous path: " << previous_path_x.size() << endl;
+
               json msgJson;
 
               // Define actual points for the planner
@@ -274,44 +278,80 @@ int main() {
 
               // To avoid collision with other cars
               bool too_close = false;
+              bool too_close_left = false;
+              bool too_close_right = false;
 
               // Find reference velocity to use
               for (int i = 0; i < sensor_fusion.size(); ++i) {
 
-                // Other car is in my lane
                 float d = sensor_fusion[i][6];
+
+                // If lane = 1
+                //   in_same_lane  = d < 8 && d > 4
+                //   in_left_lane = d < 4 && d > 0
+                //   in_right_lane  = d > 8 && d < 12
                 bool in_same_lane = d < (2 + 4 * lane + 2) && d > (2 + 4 * lane - 2);
+                bool in_left_lane = d < (2 + 4 * lane - 2) && d > (2 + 4 * lane - 2 - 4);
+                bool in_right_lane = d > (2 + 4 * lane + 2) && d < (2 + 4 * lane + 2 + 4) ;
 
+                double vx = sensor_fusion[i][3];
+                double vy = sensor_fusion[i][4];
+                double check_speed = sqrt(vx * vx + vy * vy);
+                double check_car_s = sensor_fusion[i][5];
+
+                // Speed helps to predict where the car is going to be
+                // Using previous points we can project s value in future
+                check_car_s += (double)prev_size * 0.02 * check_speed;
+                cout << "  = other car " << i << ": " << check_car_s << "d: " << d << endl;
+
+                // Other car is in my lane
                 if (in_same_lane) {
-                  double vx = sensor_fusion[i][3];
-                  double vy = sensor_fusion[i][4];
-                  double check_speed = sqrt(vx * vx + vy * vy);
-                  double check_car_s = sensor_fusion[i][5];
-
-                  // Speed helps to predict where the car is going to be
-                  // Using previous points we can project s value in future
-                  check_car_s += (double)prev_size * 0.02 * check_speed;
-
                   // Check other car position greater than mine in a gap of 30m
                   if ((check_car_s > car_s) &&
                       (check_car_s - car_s) < TOO_CLOSE_GAP) {
                     too_close = true;
                   }
                 }
+
+                if (in_left_lane) {
+                  if (abs(check_car_s - car_s) < 0.25 * TOO_CLOSE_GAP) {
+                    too_close_left = true;
+                  }
+                }
+
+                if (in_right_lane) {
+                  if (abs(check_car_s - car_s) < 0.25 * TOO_CLOSE_GAP) {
+                    too_close_right = true;
+                  }
+                }
               }
+
+              // Debugging info
+              cout << "  = car:          " << car_s << "d: " << car_d << endl;
+              cout << "    = too close:       " << too_close << endl;
+              cout << "    = too close left:  " << too_close_left << endl;
+              cout << "    = too close right: " << too_close_right << endl;
 
               if (too_close) {
 
                 // State Machine
                 switch (lane) {
                   case 0:
-                    lane = 1;
+                    if (not too_close_right) {
+                      lane = 1;
+                    }
                     break;
                   case 1:
-                    lane = 0; // Or 2
+                    if (not too_close_left) {
+                      lane = 0;
+                    } else if (not too_close_right) {
+                      lane = 2;
+                    }
                     break;
                   case 2:
-                    lane = 1;
+                    if (not too_close_left) {
+                      lane = 1;
+                    }
                     break;
                   default:
                     break;
