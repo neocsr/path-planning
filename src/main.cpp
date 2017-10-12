@@ -23,7 +23,7 @@ double deg2rad(double x) { return x * pi() / 180; }
 double rad2deg(double x) { return x * 180 / pi(); }
 
 // In mph
-const double MAX_VEL = 49.5;
+const double MAX_VEL = 49.4;
 
 // In mph
 const double INC_VEL = 0.224;
@@ -281,6 +281,7 @@ int main() {
               bool too_close_left = false;
               bool too_close_right = false;
               bool change_lane = false;
+              bool car_ahead = false;
 
               // Find reference velocity to use
               for (int i = 0; i < sensor_fusion.size(); ++i) {
@@ -337,6 +338,10 @@ int main() {
                   if (gap < 0.2 * TOO_CLOSE_GAP) {
                     too_close_left = true;
                   }
+
+                  if (gap < 1.5 * TOO_CLOSE_GAP) {
+                    car_ahead = true;
+                  }
                 }
 
                 if (in_right_lane) {
@@ -347,6 +352,10 @@ int main() {
 
                   if (gap < 0.2 * TOO_CLOSE_GAP) {
                     too_close_right = true;
+                  }
+
+                  if (gap < 1.5 * TOO_CLOSE_GAP) {
+                    car_ahead = true;
                   }
                 }
               }
@@ -383,6 +392,14 @@ int main() {
                     break;
                   default:
                     break;
+                }
+              } else {
+
+                // Prefer staying in the center lane
+                if (lane != 1 and not car_ahead) {
+                  if (not too_close_left and not too_close_right) {
+                    lane = 1;
+                  }
                 }
               }
 
